@@ -4,7 +4,116 @@ from dotenv import load_dotenv
 import os
 import json
 from json_gen import make_json
+import requests
+import jq
+from geopy.geocoders import Nominatim
+geolocator = Nominatim(user_agent="Hackathon TocToc")
 
+api_key_toctoc = os.getenv('API_KEY_TOCTOC')
+headers = {
+    'Authorization': api_key_toctoc
+}
+
+communes = json.load(open('communes.json', 'r'))
+regions = json.load(open('regions.json', 'r'))
+
+def get_properties_sales(lat: float, long: float, radius: int,
+                         page: int = 1, pageSize: int = 7, sortBy: str = 'publicationDate',
+                         sortAsc: bool = True, idTypeFamily: int = 1, salableAreaMin = None, salableAreaMax = None) -> list:
+    ''' Function that calls TOCTOC api asking for properties on sale around
+    a location (lat, long), inside a radius and returns a list with the results.
+
+    Args:
+        lat (float): Latitude
+        long (float): Longitude
+        radius (int): Radius around lat,long
+
+    Returns:
+        list: A list containing the results of the search.
+    '''
+    payload = {}
+    url = "https://gw.toctoc.com/1.0/info/sales?"
+    params = {
+        'lat': lat,
+        'long': long,
+        'radius': radius,
+        'page': page,
+        'pageSize': pageSize,
+        'sortBy': sortBy,
+        'sortAsc': sortAsc,
+        'idTypeFamily': idTypeFamily,
+    }
+    response = requests.request("GET", url, headers = headers, data = payload, params = params)
+    print(response.text)
+    data = json.loads(response.text)
+    return data["docs"]
+
+# get_properties_sales test
+
+
+def get_region_id(regionName: str) -> int:
+    '''Retrieves the id for a region from regions, searching for its name.
+    The name must be one of the following:
+
+    "Región de Arica y Parinacota"
+    "Región de Tarapacá"
+    "Región de Antofagasta"
+    "Región de Atacama"
+    "Región de Coquimbo"
+    "Región de Valparaíso"
+    "Región Metropolitana de Santiago"
+    "Región del Libertador Gral. Bernardo O'Higgins"
+    "Región del Maule"
+    "Región de Ñuble"
+    "Región del Biobío"
+    "Región de La Araucanía"
+    "Región de Los Ríos"
+    "Región de Los Lagos"
+    "Región Aysén del G. Carlos Ibáñez del Campo"
+    "Región de Magallanes y de la Antártica Chilena"
+
+    Args:
+        regionName (str): Region's name.
+    Returns:
+        int: Region id.
+    '''
+    regions_name = ["Región de Arica y Parinacota", "Región de Tarapacá", "Región de Antofagasta",
+"Región de Atacama", "Región de Coquimbo", "Región de Valparaíso", "Región Metropolitana de Santiago",
+"Región del Libertador Gral. Bernardo O'Higgins", "Región del Maule", "Región de Ñuble", "Región del Biobío",
+"Región de La Araucanía", "Región de Los Ríos", "Región de Los Lagos", "Región Aysén del G. Carlos Ibáñez del Campo",
+"Región de Magallanes y de la Antártica Chilena"]
+
+    if regionName not in regions_name:
+        raise ValueError("Invalid regionName. Please check available names")
+    else:
+        return jq.compile(".data[] | select(.name == $regionName) | .id", args={"regionName": regionName}).input(regions).first()
+
+# get region id test
+
+
+def get_city_lat_long(cityName: str, regionId: int) -> tuple:
+    '''Searches the latitude and longitude for a given city and region
+    to avoid duplicates.
+
+    Args:
+        cityName (str): City's name
+        regionId (int): Region's id based (can be get from get_region_id)
+
+    Returns:
+        tuple: A tuple containing (lat, long)
+    '''
+    commune = jq.compile(".data[] | select(.name == $cityName, .region_id == $regionId) | .name", args={"cityName": cityName, "regionId": regionId}).input(communes).first()
+    region = jq.compile(".data[] | select(.id == $regionId) | .name", args = {"regionId": regionId}).input(regions).first()
+    location = geolocator.geocode(commune+", "+region+", Chile")
+    return (location.latitude, location.longitude)
+
+# test get city lat lnog
+
+def get_properties(city, region):
+    region_id = get_region_id(region)
+    lat, long = get_city_lat_long(city, region_id)
+    return get_property_sales(lat,long, 500)
+    
 sys_prompt = """
     You are a helpful customer support assistant for the TOCTOC site. Use the supplied tool to assist the user efficiently.  
     Your main goal is to identify the customer's intent, which can be one of the following:  
@@ -204,17 +313,19 @@ load_dotenv()
 api_key_openai = os.getenv('API_KEY_OPENAI')
 client = OpenAI(api_key=api_key_openai)
 
+def init_message(message):
+    completion = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{
+        "role": "system",
+        "content": sys_prompt,
+    },
+        {"role": "user", "content": message}],
 
-message = input("send a message for our bot >:)")
-completion = client.chat.completions.create(
-  model="gpt-4o",
-  messages=[{
-      "role": "system",
-      "content": sys_prompt,
-  },
-      {"role": "user", "content": message}],
-
-  tools=tools,
-)
-calls = completion.choices[0].message.tool_calls
-arguments = json.loads(calls[0].function.arguments)
+    tools=tools,
+    )
+    calls = completion.choices[0].message.tool_calls
+    arguments = json.loads(calls[0].function.arguments)
+    cust_response = arguments['customResponse']
+    properties = get_properties(arguments['city'], arguments['region'])
+    return {"response":cust_response,"properties": properties }
