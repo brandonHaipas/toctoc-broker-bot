@@ -204,21 +204,17 @@ load_dotenv()
 api_key_openai = os.getenv('API_KEY_OPENAI')
 client = OpenAI(api_key=api_key_openai)
 
-while True:
-    message = input("send a message for our bot >:)")
-    completion = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{
-        "role": "system",
-        "content": sys_prompt,
-    },
-        {"role": "user", "content": message}],
 
-    tools=tools,
-    )
-    calls = completion.choices[0].message.tool_calls
-    arguments = json.loads(calls[0].function.arguments)
-    if arguments["isFinished"]:
-        print("The conversation is finished")
-        break
-    
+message = input("send a message for our bot >:)")
+completion = client.chat.completions.create(
+  model="gpt-4o",
+  messages=[{
+      "role": "system",
+      "content": sys_prompt,
+  },
+      {"role": "user", "content": message}],
+
+  tools=tools,
+)
+calls = completion.choices[0].message.tool_calls
+arguments = json.loads(calls[0].function.arguments)
