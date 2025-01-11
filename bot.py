@@ -17,7 +17,7 @@ headers = {
 communes = json.load(open('communes.json', 'r'))
 regions = json.load(open('regions.json', 'r'))
 
-def get_properties_sales(lat: float, long: float, radius: int,
+def get_properties_sales(lat: float, lon: float, radius: int,
                          page: int = 1, pageSize: int = 7, sortBy: str = 'publicationDate',
                          sortAsc: bool = True, idTypeFamily: int = 1, salableAreaMin = None, salableAreaMax = None) -> list:
     ''' Function that calls TOCTOC api asking for properties on sale around
@@ -35,7 +35,7 @@ def get_properties_sales(lat: float, long: float, radius: int,
     url = "https://gw.toctoc.com/1.0/info/sales?"
     params = {
         'lat': lat,
-        'long': long,
+        'long': lon,
         'radius': radius,
         'page': page,
         'pageSize': pageSize,
@@ -43,6 +43,7 @@ def get_properties_sales(lat: float, long: float, radius: int,
         'sortAsc': sortAsc,
         'idTypeFamily': idTypeFamily,
     }
+    print(lat, lon, radius)
     response = requests.request("GET", url, headers = headers, data = payload, params = params)
     print(response.text)
     data = json.loads(response.text)
@@ -111,8 +112,8 @@ def get_city_lat_long(cityName: str, regionId: int) -> tuple:
 
 def get_properties(city, region):
     region_id = get_region_id(region)
-    lat, long = get_city_lat_long(city, region_id)
-    return get_property_sales(lat,long, 500)
+    lat, lon = get_city_lat_long(city, region_id)
+    return get_properties_sales(lat,lon, 50000)
     
 sys_prompt = """
     You are a helpful customer support assistant for the TOCTOC site. Use the supplied tool to assist the user efficiently.  
@@ -313,6 +314,30 @@ load_dotenv()
 api_key_openai = os.getenv('API_KEY_OPENAI')
 client = OpenAI(api_key=api_key_openai)
 
+def get_context(arguments):
+    return str(arguments)
+def normal_message(message, context):
+    str_context = get_context(context)
+    completion = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{
+        "role": "system",
+        "content": sys_prompt,
+    },
+              {"role":"system",
+               "content":f"this is the context of the previous message: {str_context}"},
+        {"role": "user", "content": message}],
+
+    tools=tools,
+    )
+    calls = completion.choices[0].message.tool_calls
+    arguments = json.loads(calls[0].function.arguments)
+    cust_response = arguments['customResponse']
+    properties = ""
+    if 'city' in arguments.keys() and 'region' in arguments.keys():
+        properties = get_properties(arguments['city'], arguments['region'])
+    return (cust_response,properties, arguments)
+
 def init_message(message):
     completion = client.chat.completions.create(
     model="gpt-4o",
@@ -327,5 +352,7 @@ def init_message(message):
     calls = completion.choices[0].message.tool_calls
     arguments = json.loads(calls[0].function.arguments)
     cust_response = arguments['customResponse']
-    properties = get_properties(arguments['city'], arguments['region'])
-    return {"response":cust_response,"properties": properties }
+    properties = ""
+    if 'city' in arguments.keys() and 'region' in arguments.keys():
+        properties = get_properties(arguments['city'], arguments['region'])
+    return (cust_response,properties, arguments)
