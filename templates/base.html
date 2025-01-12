@@ -7,20 +7,19 @@
 </head>
 <body>
     <div id="chat" class="">
-        <div class="chat chat-end">
+        <div class="chat chat-start">
   <div class="chat-image avatar">
     <div class="w-10 rounded-full">
       <img
         alt="Tailwind CSS chat bubble component"
-        src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" />
+        src="https://images.scalebranding.com/angry-red-panda-logo-699ba7fb-0177-48de-8167-4a7a556fca1d.jpg" />
     </div>
   </div>
   <div class="chat-bubble">Hola! Soy el asistente virtual de TocToc. ¿Qué estás buscando?</div>
-  <div class="chat-footer opacity-50">Seen at 12:46</div>
 </div>
     </div>
-<form class="w-max" onsubmit="send_message">
-    <input type="text" placeholder="Type here" class="input input-bordered w-full max-w-xs" />
+<form id="chat-form" class="w-screen" method="post" enctype="multipart/form-data">
+    <input type="text" placeholder="Type here" class="input input-bordered w-full max-w-xs" id="message" name="message"/>
 </form>
         </div>
 
